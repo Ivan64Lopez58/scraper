@@ -167,12 +167,7 @@ async def ejecutar_scraping_rapido(empresas: List[Dict]):
 
 if __name__ == "__main__":
     empresas = [
-        {"empresa": "Apple", "url": "https://www.investing.com/equities/apple-drc"},
-        {"empresa": "Microsoft", "url": "https://www.investing.com/equities/microsoft-corp"},
-        {"empresa": "Google", "url": "https://www.investing.com/equities/google-inc-c"},
-        {"empresa": "Tesla", "url": "https://www.investing.com/equities/tesla-motors"},
-        {"empresa": "Amazon", "url": "https://www.investing.com/equities/amazon-com-inc"},
-        {"empresa": "Apple", "url": "https://www.investing.com/equities/apple-drc"},
+        {"empresa": "Boeing", "url": "https://www.investing.com/equities/boeing-co"}
        ]
 
     resultados = asyncio.run(ejecutar_scraping_rapido(empresas))
