@@ -17,6 +17,7 @@ async def esperar_selector_optimizado(page, selector: str, max_wait=10) -> str:
 
 async def scrap_una_accion_optimizado(playwright, accion: Dict) -> Dict:
     browser = None
+    context = None
     try:
         browser = await playwright.chromium.launch(
             headless=True,
@@ -57,39 +58,76 @@ async def scrap_una_accion_optimizado(playwright, accion: Dict) -> Dict:
 
         resultados = {}
         selectores = {
-                'nombre_empresa': [
-                "div.mb-1 h1",  # selector más directo
-                "h1.text-xl.font-bold"  # alternativa
-            ],
-            'precio': [
-                "[data-test='instrument-price-last']",
-                ".text-2xl.font-bold",
-                ".instrument-price_last__JQN7_"
-            ],
-            'cambio': [
-                "[data-test='instrument-price-change']",
-                ".text-sm.instrument-price_change__d9ElD"
-            ],
-            'cambio_pct': [
-                "[data-test='instrument-price-change-percent']",
-                ".text-sm"
-            ],
-            'moneda': [
-                "[data-test='currency-in-label']",
-                ".text-xs",
-                "span.ml-1.5.font-bold"  # NUEVO selector adicional
-            ],
-            'pais': [
-                "div.relative.flex.cursor-pointer.items-center span.flex-shrink",  # texto "Colombia"
-                "div.relative.flex.cursor-pointer.items-center span.text-xs\\/5",  # mismo texto, más específico
-            ],
-            'hora_cierre': [
-                "time[data-test='trading-time-label']"
-            ],
-            'estado_sesion': [  # Por si quieres mostrar "Open", "Closed", etc.
-                "span[data-test='trading-state-label']"
-            ]
-}
+            'nombre_empresa': ["div.mb-1 h1", "h1.text-xl.font-bold"],
+            'precio': ["[data-test='instrument-price-last']", ".text-2xl.font-bold", ".instrument-price_last__JQN7_"],
+            'cambio': ["[data-test='instrument-price-change']", ".text-sm.instrument-price_change__d9ElD"],
+            'cambio_pct': ["[data-test='instrument-price-change-percent']", ".text-sm"],
+            'moneda': ["[data-test='currency-in-label']", ".text-xs", "span.ml-1.5.font-bold"],
+            'pais': ["div.relative.flex.cursor-pointer.items-center span.flex-shrink", "div.relative.flex.cursor-pointer.items-center span.text-xs\\/5"],
+            'hora_cierre': ["time[data-test='trading-time-label']"],
+            'estado_sesion': ["span[data-test='trading-state-label']"]
+        }
+
+        for campo, lista_selectores in selectores.items():
+            valor = "N/A"
+            for selector in lista_selectores:
+                try:
+                    valor = await esperar_selector_optimizado(page, selector, max_wait=5)
+                    break
+                except:
+                    continue
+            resultados[campo] = valor
+
+        bolsa = "Desconocido"
+        bolsa_selectores = [
+            "div.flex.items-center.gap-1 span.text-xs\\/5.font-normal",
+            ".text-xs.text-gray-500",
+            "[data-test='exchange-name']"
+        ]
+        for selector in bolsa_selectores:
+            try:
+                elemento = await page.query_selector(selector)
+                if elemento:
+                    bolsa = (await elemento.inner_text()).strip()
+                    break
+            except:
+                continue
+
+        return {
+            "nombre_empresa": resultados.get('nombre_empresa', accion["empresa"]),
+            "empresa": accion["empresa"],
+            "url": accion["url"],
+            "precio": resultados.get('precio', 'N/A'),
+            "cambio": resultados.get('cambio', 'N/A'),
+            "cambio_pct": resultados.get('cambio_pct', 'N/A'),
+            "moneda": resultados.get('moneda', 'N/A'),
+            "pais": resultados.get('pais', 'N/A'),
+            "estado_sesion": resultados.get('estado_sesion', 'N/A'),
+            "hora_cierre": resultados.get('hora_cierre', 'N/A'),
+            "bolsa": bolsa,
+            "status": "✅ OK"
+        }
+
+    except Exception as e:
+        print(f"❌ Error con {accion['empresa']}: {str(e)}")
+        return {
+            "empresa": accion["empresa"],
+            "url": accion["url"],
+            "precio": "Error",
+            "cambio": "Error",
+            "cambio_pct": "Error",
+            "moneda": "Error",
+            "bolsa": "Error",
+            "status": f"❌ {str(e)[:50]}..."
+        }
+
+    finally:
+        # Siempre cerrar, incluso si todo falla
+        if context:
+            await context.close()
+        if browser:
+            await browser.close()
+
 
   
 
