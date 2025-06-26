@@ -1,7 +1,10 @@
 import asyncio
+import time
 from typing import Dict, List
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
-import time
+from asyncio import Semaphore
+
+SEM = Semaphore(10)  # Límite máximo de 10 navegadores activos
 
 async def esperar_selector_optimizado(page, selector: str, max_wait=10) -> str:
     try:
@@ -17,6 +20,7 @@ async def esperar_selector_optimizado(page, selector: str, max_wait=10) -> str:
 
 async def scrap_una_accion_optimizado(playwright, accion: Dict) -> Dict:
     browser = None
+    context = None
     try:
         browser = await playwright.chromium.launch(
             headless=True,
@@ -47,6 +51,7 @@ async def scrap_una_accion_optimizado(playwright, accion: Dict) -> Dict:
 
         await page.goto(accion["url"], wait_until="domcontentloaded", timeout=30000)
 
+        # Clic en botón de aceptar cookies si existe
         try:
             await page.click("button:has-text('Accept')", timeout=2000)
         except:
@@ -57,41 +62,15 @@ async def scrap_una_accion_optimizado(playwright, accion: Dict) -> Dict:
 
         resultados = {}
         selectores = {
-                'nombre_empresa': [
-                "div.mb-1 h1",  # selector más directo
-                "h1.text-xl.font-bold"  # alternativa
-            ],
-            'precio': [
-                "[data-test='instrument-price-last']",
-                ".text-2xl.font-bold",
-                ".instrument-price_last__JQN7_"
-            ],
-            'cambio': [
-                "[data-test='instrument-price-change']",
-                ".text-sm.instrument-price_change__d9ElD"
-            ],
-            'cambio_pct': [
-                "[data-test='instrument-price-change-percent']",
-                ".text-sm"
-            ],
-            'moneda': [
-                "[data-test='currency-in-label']",
-                ".text-xs",
-                "span.ml-1.5.font-bold"  # NUEVO selector adicional
-            ],
-            'pais': [
-                "div.relative.flex.cursor-pointer.items-center span.flex-shrink",  # texto "Colombia"
-                "div.relative.flex.cursor-pointer.items-center span.text-xs\\/5",  # mismo texto, más específico
-            ],
-            'hora_cierre': [
-                "time[data-test='trading-time-label']"
-            ],
-            'estado_sesion': [  # Por si quieres mostrar "Open", "Closed", etc.
-                "span[data-test='trading-state-label']"
-            ]
-}
-
-  
+            'nombre_empresa': ["div.mb-1 h1", "h1.text-xl.font-bold"],
+            'precio': ["[data-test='instrument-price-last']", ".text-2xl.font-bold", ".instrument-price_last__JQN7_"],
+            'cambio': ["[data-test='instrument-price-change']", ".text-sm.instrument-price_change__d9ElD"],
+            'cambio_pct': ["[data-test='instrument-price-change-percent']", ".text-sm"],
+            'moneda': ["[data-test='currency-in-label']", ".text-xs", "span.ml-1.5.font-bold"],
+            'pais': ["div.relative.flex.cursor-pointer.items-center span.flex-shrink", "div.relative.flex.cursor-pointer.items-center span.text-xs\\/5"],
+            'hora_cierre': ["time[data-test='trading-time-label']"],
+            'estado_sesion': ["span[data-test='trading-state-label']"]
+        }
 
         for campo, lista_selectores in selectores.items():
             valor = "N/A"
@@ -118,8 +97,6 @@ async def scrap_una_accion_optimizado(playwright, accion: Dict) -> Dict:
             except:
                 continue
 
-        await browser.close()
-
         return {
             "nombre_empresa": resultados.get('nombre_empresa', accion["empresa"]),
             "empresa": accion["empresa"],
@@ -135,10 +112,7 @@ async def scrap_una_accion_optimizado(playwright, accion: Dict) -> Dict:
             "status": "✅ OK"
         }
 
-
     except Exception as e:
-        if browser:
-            await browser.close()
         print(f"❌ Error con {accion['empresa']}: {str(e)}")
         return {
             "empresa": accion["empresa"],
@@ -151,12 +125,32 @@ async def scrap_una_accion_optimizado(playwright, accion: Dict) -> Dict:
             "status": f"❌ {str(e)[:50]}..."
         }
 
+    finally:
+        try:
+            if context:
+                await context.close()
+                print(f"✅ Contexto cerrado para {accion['empresa']}")
+        except Exception as e:
+            print(f"⚠️ Error al cerrar context: {e}")
+
+        try:
+            if browser:
+                await browser.close()
+                print(f"✅ Navegador cerrado para {accion['empresa']}")
+        except Exception as e:
+            print(f"⚠️ Error al cerrar browser: {e}")
+
+# ⛔ Esta función controla el límite de concurrencia
+async def scrap_una_accion_con_semaforo(playwright, accion: Dict) -> Dict:
+    async with SEM:
+        return await scrap_una_accion_optimizado(playwright, accion)
+
 async def ejecutar_scraping_rapido(empresas: List[Dict]):
-    print(f"🚀 Iniciando scraping de {len(empresas)} empresas (modo async)...")
+    print(f"🚀 Iniciando scraping de {len(empresas)} empresas (máx 10 simultáneos)...")
     inicio = time.time()
 
     async with async_playwright() as p:
-        tareas = [scrap_una_accion_optimizado(p, emp) for emp in empresas]
+        tareas = [scrap_una_accion_con_semaforo(p, emp) for emp in empresas]
         resultados = await asyncio.gather(*tareas)
 
     tiempo_total = time.time() - inicio
@@ -168,7 +162,7 @@ async def ejecutar_scraping_rapido(empresas: List[Dict]):
 if __name__ == "__main__":
     empresas = [
         {"empresa": "Boeing", "url": "https://www.investing.com/equities/boeing-co"}
-       ]
+    ]
 
     resultados = asyncio.run(ejecutar_scraping_rapido(empresas))
 
@@ -186,7 +180,4 @@ if __name__ == "__main__":
     {r.get('pais', 'N/A')}
     {r.get('estado_sesion', 'N/A')}
     {r.get('hora_cierre', 'N/A')}
-    
     """)
-
-
