@@ -1,4 +1,3 @@
-# Imagen oficial actualizada con navegadores para Playwright 1.53.0
 FROM mcr.microsoft.com/playwright/python:v1.53.0-jammy
 
 
