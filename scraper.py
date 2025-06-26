@@ -1,7 +1,10 @@
 import asyncio
+import time
 from typing import Dict, List
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
-import time
+from asyncio import Semaphore
+
+SEM = Semaphore(10)  # Límite máximo de 10 navegadores activos
 
 async def esperar_selector_optimizado(page, selector: str, max_wait=10) -> str:
     try:
@@ -48,6 +51,7 @@ async def scrap_una_accion_optimizado(playwright, accion: Dict) -> Dict:
 
         await page.goto(accion["url"], wait_until="domcontentloaded", timeout=30000)
 
+        # Clic en botón de aceptar cookies si existe
         try:
             await page.click("button:has-text('Accept')", timeout=2000)
         except:
@@ -122,79 +126,31 @@ async def scrap_una_accion_optimizado(playwright, accion: Dict) -> Dict:
         }
 
     finally:
-        # Siempre cerrar, incluso si todo falla
-        if context:
-            await context.close()
-        if browser:
-            await browser.close()
+        try:
+            if context:
+                await context.close()
+                print(f"✅ Contexto cerrado para {accion['empresa']}")
+        except Exception as e:
+            print(f"⚠️ Error al cerrar context: {e}")
 
+        try:
+            if browser:
+                await browser.close()
+                print(f"✅ Navegador cerrado para {accion['empresa']}")
+        except Exception as e:
+            print(f"⚠️ Error al cerrar browser: {e}")
 
-  
-
-        for campo, lista_selectores in selectores.items():
-            valor = "N/A"
-            for selector in lista_selectores:
-                try:
-                    valor = await esperar_selector_optimizado(page, selector, max_wait=5)
-                    break
-                except:
-                    continue
-            resultados[campo] = valor
-
-        bolsa = "Desconocido"
-        bolsa_selectores = [
-            "div.flex.items-center.gap-1 span.text-xs\\/5.font-normal",
-            ".text-xs.text-gray-500",
-            "[data-test='exchange-name']"
-        ]
-        for selector in bolsa_selectores:
-            try:
-                elemento = await page.query_selector(selector)
-                if elemento:
-                    bolsa = (await elemento.inner_text()).strip()
-                    break
-            except:
-                continue
-
-        await browser.close()
-
-        return {
-            "nombre_empresa": resultados.get('nombre_empresa', accion["empresa"]),
-            "empresa": accion["empresa"],
-            "url": accion["url"],
-            "precio": resultados.get('precio', 'N/A'),
-            "cambio": resultados.get('cambio', 'N/A'),
-            "cambio_pct": resultados.get('cambio_pct', 'N/A'),
-            "moneda": resultados.get('moneda', 'N/A'),
-            "pais": resultados.get('pais', 'N/A'),
-            "estado_sesion": resultados.get('estado_sesion', 'N/A'),
-            "hora_cierre": resultados.get('hora_cierre', 'N/A'),
-            "bolsa": bolsa,
-            "status": "✅ OK"
-        }
-
-
-    except Exception as e:
-        if browser:
-            await browser.close()
-        print(f"❌ Error con {accion['empresa']}: {str(e)}")
-        return {
-            "empresa": accion["empresa"],
-            "url": accion["url"],
-            "precio": "Error",
-            "cambio": "Error",
-            "cambio_pct": "Error",
-            "moneda": "Error",
-            "bolsa": "Error",
-            "status": f"❌ {str(e)[:50]}..."
-        }
+# ⛔ Esta función controla el límite de concurrencia
+async def scrap_una_accion_con_semaforo(playwright, accion: Dict) -> Dict:
+    async with SEM:
+        return await scrap_una_accion_optimizado(playwright, accion)
 
 async def ejecutar_scraping_rapido(empresas: List[Dict]):
-    print(f"🚀 Iniciando scraping de {len(empresas)} empresas (modo async)...")
+    print(f"🚀 Iniciando scraping de {len(empresas)} empresas (máx 10 simultáneos)...")
     inicio = time.time()
 
     async with async_playwright() as p:
-        tareas = [scrap_una_accion_optimizado(p, emp) for emp in empresas]
+        tareas = [scrap_una_accion_con_semaforo(p, emp) for emp in empresas]
         resultados = await asyncio.gather(*tareas)
 
     tiempo_total = time.time() - inicio
@@ -206,7 +162,7 @@ async def ejecutar_scraping_rapido(empresas: List[Dict]):
 if __name__ == "__main__":
     empresas = [
         {"empresa": "Boeing", "url": "https://www.investing.com/equities/boeing-co"}
-       ]
+    ]
 
     resultados = asyncio.run(ejecutar_scraping_rapido(empresas))
 
@@ -224,7 +180,4 @@ if __name__ == "__main__":
     {r.get('pais', 'N/A')}
     {r.get('estado_sesion', 'N/A')}
     {r.get('hora_cierre', 'N/A')}
-    
     """)
-
-
