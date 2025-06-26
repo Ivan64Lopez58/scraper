@@ -1,5 +1,5 @@
-# Imagen oficial actualizada con navegadores para Playwright 1.52.0
 FROM mcr.microsoft.com/playwright/python:v1.53.0-jammy
+
 
 # Establece el directorio de trabajo
 WORKDIR /app
