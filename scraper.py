@@ -69,14 +69,29 @@ async def scrap_una_accion_optimizado(playwright, accion: Dict) -> Dict:
             'moneda': ["[data-test='currency-in-label']", ".text-xs", "span.ml-1.5.font-bold"],
             'pais': ["div.relative.flex.cursor-pointer.items-center span.flex-shrink", "div.relative.flex.cursor-pointer.items-center span.text-xs\\/5"],
             'hora_cierre': ["time[data-test='trading-time-label']"],
-            'estado_sesion': ["span[data-test='trading-state-label']"]
+            'estado_sesion': ["span[data-test='trading-state-label']"],
+            'logo_empresa': ["div.relative img.float-left"]
+
         }
 
         for campo, lista_selectores in selectores.items():
             valor = "N/A"
             for selector in lista_selectores:
                 try:
-                    valor = await esperar_selector_optimizado(page, selector, max_wait=5)
+                    await page.wait_for_selector(selector, timeout=5000, state="visible")
+                    elemento = await page.query_selector(selector)
+                    if elemento:
+                        if campo == "logo_empresa":
+                            src = await elemento.get_attribute("src")
+                            if src:
+                                valor = src.strip()
+                                break
+                        else:
+                            texto = await elemento.inner_text()
+                            if texto.strip():
+                                valor = texto.strip()
+                                break
+
                     break
                 except:
                     continue
@@ -108,9 +123,11 @@ async def scrap_una_accion_optimizado(playwright, accion: Dict) -> Dict:
             "pais": resultados.get('pais', 'N/A'),
             "estado_sesion": resultados.get('estado_sesion', 'N/A'),
             "hora_cierre": resultados.get('hora_cierre', 'N/A'),
+            "logo_empresa": resultados.get('logo_empresa', 'N/A'),  # 👈 nuevo campo
             "bolsa": bolsa,
             "status": "✅ OK"
         }
+
 
     except Exception as e:
         print(f"❌ Error con {accion['empresa']}: {str(e)}")
@@ -171,13 +188,15 @@ if __name__ == "__main__":
     print("="*80)
     for r in resultados:
         print(f"""
-    {r.get('nombre_empresa', 'N/A')}
-    {r['precio']} 
-    {r['moneda']}
-    {r['cambio']} 
-    ({r['cambio_pct']})
-    {r['bolsa']}
-    {r.get('pais', 'N/A')}
-    {r.get('estado_sesion', 'N/A')}
-    {r.get('hora_cierre', 'N/A')}
-    """)
+        {r.get('nombre_empresa', 'N/A')}
+        {r['precio']} 
+        {r['moneda']}
+        {r['cambio']} 
+        ({r['cambio_pct']})
+        {r['bolsa']}
+        {r.get('pais', 'N/A')}
+        {r.get('estado_sesion', 'N/A')}
+        {r.get('hora_cierre', 'N/A')}
+        {r.get('logo_empresa', 'N/A')}
+        """)
+
