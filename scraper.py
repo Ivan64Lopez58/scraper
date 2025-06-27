@@ -197,6 +197,6 @@ if __name__ == "__main__":
         {r.get('pais', 'N/A')}
         {r.get('estado_sesion', 'N/A')}
         {r.get('hora_cierre', 'N/A')}
-        Logo: {r.get('logo_empresa', 'N/A')}  # 👈 nuevo campo
+        {r.get('logo_empresa', 'N/A')}
         """)
 
